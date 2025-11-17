@@ -10,10 +10,17 @@ import {
   Volume2, Settings, RefreshCw, Leaf 
 } from "lucide-react";
 // lib/data.ts dosyasından güncel Word tipini import ediyoruz
-// Bu dosyanın da güncel (data.json'u okuyan) haliyle var olduğunu varsayıyorum
 import { type Word } from "@/lib/data"; 
 // Shadcn'in 'classnames' utility'si
 import { cn } from "@/lib/utils"; 
+
+// YENİ: Typescript'e 'responsiveVoice' objesinin 'window' 
+// üzerinde var olduğunu söylüyoruz.
+declare global {
+  interface Window {
+    responsiveVoice: any;
+  }
+}
 
 // LocalStorage'dan güvenli veri çekmek için helper
 const getStorageData = (key: string): number[] => {
@@ -26,7 +33,7 @@ const getStorageData = (key: string): number[] => {
 // Component'in alacağı prop'lar
 interface FlashcardSessionProps {
   mode: "new" | "practice" | "review";
-  allWords: Word[]; // Artık tüm kelimeler sunucudan prop olarak geliyor
+  allWords: Word[]; // Tüm kelimeler sunucudan prop olarak geliyor
 }
 
 // Fisher-Yates shuffle algoritması (diziyi karıştırmak için)
@@ -38,7 +45,7 @@ const shuffleArray = (array: any[]) => {
   return array;
 };
 
-// *** YENİ: Artikel koduna göre renk sınıfını döndüren fonksiyon ***
+// *** Artikel koduna göre renk sınıfını döndüren fonksiyon ***
 const getArticleColorClass = (code: number): string => {
   switch (code) {
     case 1: // der
@@ -69,17 +76,13 @@ export default function FlashcardSession({ mode, allWords }: FlashcardSessionPro
 
     if (mode === "new") {
       // Mod 'new': Henüz HİÇ GÖRÜLMEMİŞ kelimeleri bul
-      // 'id' alanı lib/data.ts'de eklendiği için bu mantık çalışır
       filteredWords = allWords.filter(word => !seenIds.has(word.id));
-      console.log(`Mod: Yeni. ${filteredWords.length} görülmemiş kelime bulundu.`);
     } else if (mode === "practice") {
       // Mod 'practice': GÖRÜLMÜŞ ama ÖĞRENİLMEMİŞ kelimeleri bul
       filteredWords = allWords.filter(word => seenIds.has(word.id) && !learnedIds.has(word.id));
-      console.log(`Mod: Pratik. ${filteredWords.length} pratik kelimesi bulundu.`);
     } else if (mode === "review") {
       // Mod 'review': ÖĞRENİLMİŞ kelimeleri bul (genel tekrar)
       filteredWords = allWords.filter(word => learnedIds.has(word.id));
-      console.log(`Mod: Tekrar. ${filteredWords.length} öğrenilmiş kelime bulundu.`);
     }
 
     // 2. Bulunan kelimeleri karıştır ve ilk 15'ini al
@@ -140,18 +143,29 @@ export default function FlashcardSession({ mode, allWords }: FlashcardSessionPro
       setIsFlipped(false); // Yeni kelimede kartı başa döndür
     } else {
       // Oturum bitti!
-     
+      alert("Oturum bitti! Ana sayfaya yönlendiriliyorsunuz.");
       window.location.href = '/'; // Ana sayfaya yolla
     }
   };
   
-  // Oynatma (Seslendirme) Fonksiyonu
+  // *** playSound fonksiyonu ResponsiveVoice kullanacak şekilde güncellendi ***
   const playSound = (text: string) => {
-    // Cümle yoksa (boş string ise) oynatmayı deneme
-    if (typeof window !== 'undefined' && window.speechSynthesis && text) {
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'de-DE'; // Almanca için
-        window.speechSynthesis.speak(utterance);
+    // 1. Cümle boşsa hiçbir şey yapma
+    if (!text) return;
+
+    // 2. ResponsiveVoice kütüphanesi yüklendi mi diye kontrol et
+    if (typeof window !== 'undefined' && window.responsiveVoice) {
+      // 3. Yüklendiyse, "Deutsch Male" sesiyle metni oku
+      // ( layout.tsx'e script'i eklediğini varsayıyorum )
+      window.responsiveVoice.speak(text, "Deutsch Male");
+    } else {
+      // 4. (Fallback) Kütüphane yüklenmezse, eski robotik sesi kullan
+      console.warn("ResponsiveVoice not loaded, using default TTS.");
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.lang = 'de-DE';
+          window.speechSynthesis.speak(utterance);
+      }
     }
   };
 
@@ -193,7 +207,6 @@ export default function FlashcardSession({ mode, allWords }: FlashcardSessionPro
             <Button variant="ghost" size="icon">
               <Settings className="text-gray-400" />
             </Button>
-            {/* TODO: Profil ikonu */}
             <div className="w-8 h-8 bg-gray-300 rounded-full"></div>
           </div>
         </div>
@@ -204,8 +217,8 @@ export default function FlashcardSession({ mode, allWords }: FlashcardSessionPro
       </header>
 
       {/* 2. Flashcard Alanı */}
-      <main className="flex-grow flex flex-col items-center justify-center">
-        {/* *** YENİ: Kartın arkaplan rengi 'articleColorClass' ile ayarlandı *** */}
+      <main className="grow flex flex-col items-center justify-center">
+        {/* Kartın arkaplan rengi 'articleColorClass' ile ayarlandı */}
         <Card className={cn(
           "w-full max-w-3xl h-[400px] shadow-lg rounded-2xl flex flex-col justify-center items-center p-6 text-center transition-colors duration-300",
           articleColorClass // Renk sınıfı burada eklendi
@@ -217,6 +230,7 @@ export default function FlashcardSession({ mode, allWords }: FlashcardSessionPro
                 <h2 className="text-5xl font-bold text-gray-800">
                   {currentWord.word}
                 </h2>
+                {/* Buton artık güncel playSound'u çağırıyor */}
                 <Button variant="ghost" size="icon" onClick={() => playSound(currentWord.word)}>
                   <Volume2 className="text-gray-500" />
                 </Button>
@@ -242,7 +256,7 @@ export default function FlashcardSession({ mode, allWords }: FlashcardSessionPro
               </Button>
             </CardContent>
           ) : (
-            // ARKA YÜZ (Türkçe) - Alan adları güncellendi
+            // ARKA YÜZ (Türkçe)
             <CardContent className="flex flex-col items-center justify-center gap-6 animate-in fade-in">
               <h2 className="text-5xl font-bold text-gray-800">
                 {currentWord.translation_tr}
@@ -253,8 +267,7 @@ export default function FlashcardSession({ mode, allWords }: FlashcardSessionPro
                   {currentWord.example_tr}
                 </p>
               )}
-
-              {/* YENİ: Arka yüze de çevir butonu eklendi */}
+              {/* Arka yüze de çevir butonu eklendi */}
               <Button
                 variant="outline"
                 className="mt-8"
@@ -268,7 +281,7 @@ export default function FlashcardSession({ mode, allWords }: FlashcardSessionPro
       </main>
 
       {/* 3. Footer (Aksiyon Butonları) */}
-      <footer className="w-full max-w-3xl mx-auto mt-6 mb-4">
+      <footer className="w-full max-w-3xl mx-auto mt-6">
         <div className="grid grid-cols-2 gap-4">
           <Button
             size="lg"

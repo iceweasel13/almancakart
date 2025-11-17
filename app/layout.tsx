@@ -24,6 +24,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+        <head>
+      
+        <meta name="theme-color" content="#ffffff" />
+        <link rel="apple-touch-icon" href="icon-192x192.png" />
+        <script src="https://code.responsivevoice.org/responsivevoice.js" async></script>
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
