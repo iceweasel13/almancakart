@@ -2,8 +2,8 @@ import type { MetadataRoute } from 'next'
  
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'Next.js PWA',
-    short_name: 'NextPWA',
+    name: 'Almanca kart',
+    short_name: 'ALMANCA KART',
     description: 'A Progressive Web App built with Next.js',
     start_url: '/',
     display: 'standalone',

@@ -266,7 +266,7 @@ export default function FlashcardSession({ mode, allWords }: FlashcardSessionPro
       </main>
 
       {/* 3. Footer (Aksiyon Butonları) */}
-      <footer className="w-full max-w-3xl mx-auto mt-6">
+      <footer className="w-full max-w-3xl mx-auto mt-6 mb-4">
         <div className="grid grid-cols-2 gap-4">
           <Button
             size="lg"
