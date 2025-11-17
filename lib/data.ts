@@ -32,10 +32,10 @@ export function getWordList(): Word[] {
     // Veri zaten 'id'li olduğu için direkt döndürüyoruz.
     return data;
 
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
     console.error("[lib/data.ts] HATA: 'data.json' dosyası okunamadı veya parse edilemedi!");
-    console.error(`[lib/data.ts] Hata Detayı:`, error.message);
+    console.error(`[lib/data.ts] Hata Detayı:`, (error as Error).message);
     console.error("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
     
     // Hata olursa BOŞ liste döndür (bu da "kelime yok" ekranını açıklar)
