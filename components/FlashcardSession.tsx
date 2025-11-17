@@ -157,7 +157,7 @@ export default function FlashcardSession({ mode, allWords }: FlashcardSessionPro
     if (typeof window !== 'undefined' && window.responsiveVoice) {
       // 3. Yüklendiyse, "Deutsch Male" sesiyle metni oku
       // ( layout.tsx'e script'i eklediğini varsayıyorum )
-      window.responsiveVoice.speak(text, "Deutsch Male");
+      window.responsiveVoice.speak(text, "Deutsch Female");
     } else {
       // 4. (Fallback) Kütüphane yüklenmezse, eski robotik sesi kullan
       console.warn("ResponsiveVoice not loaded, using default TTS.");
