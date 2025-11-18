@@ -1,304 +1,266 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
 import { useState, useEffect } from "react";
+import { createClient } from "@/utils/supabase/client"; // Client-side Supabase
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { 
-  Volume2, Settings, RefreshCw, Leaf 
-} from "lucide-react";
-// lib/data.ts dosyasından güncel Word tipini import ediyoruz
-import { type Word } from "@/lib/data"; 
-// Shadcn'in 'classnames' utility'si
-import { cn } from "@/lib/utils"; 
+import { Volume2, Settings, RefreshCw, Leaf, Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useRouter } from "next/navigation";
 
-// YENİ: Typescript'e 'responsiveVoice' objesinin 'window' 
-// üzerinde var olduğunu söylüyoruz.
-declare global {
-  interface Window {
-    responsiveVoice: any;
-  }
-}
-
-// LocalStorage'dan güvenli veri çekmek için helper
-const getStorageData = (key: string): number[] => {
-  // Bu fonksiyon client-side'da çalışacağı için 'window' kontrolü önemli
-  if (typeof window === "undefined") return [];
-  const data = localStorage.getItem(key);
-  return data ? JSON.parse(data) : [];
+// Kelime Tipi (Veritabanı ile aynı)
+type Word = {
+  id: number;
+  german: string;
+  german_sentence: string;
+  turkish: string;
+  turkish_sentence: string;
+  artikel_code: number;
 };
 
-// Component'in alacağı prop'lar
 interface FlashcardSessionProps {
   mode: "new" | "practice" | "review";
-  allWords: Word[]; // Tüm kelimeler sunucudan prop olarak geliyor
 }
 
-// Fisher-Yates shuffle algoritması (diziyi karıştırmak için)
-const shuffleArray = (array: any[]) => {
-  for (let i = array.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [array[i], array[j]] = [array[j], array[i]];
-  }
-  return array;
-};
-
-// *** Artikel koduna göre renk sınıfını döndüren fonksiyon ***
+// Artikel renkleri
 const getArticleColorClass = (code: number): string => {
   switch (code) {
-    case 1: // der
-      return "bg-blue-100/60"; // Hafif mavi arkaplan
-    case 2: // die
-      return "bg-pink-100/60"; // Hafif pembe arkaplan
-    case 3: // das
-      return "bg-green-100/60"; // Hafif yeşil arkaplan
-    default: // 0 veya diğer
-      return "bg-white"; // Standart
+    case 1: return "bg-blue-100/60"; // Der
+    case 2: return "bg-pink-100/60"; // Die
+    case 3: return "bg-green-100/60"; // Das
+    default: return "bg-white";
   }
 };
 
-export default function FlashcardSession({ mode, allWords }: FlashcardSessionProps) {
-  // Oturumda gösterilecek kelimeler (örn: 15 tane)
-  const [sessionWords, setSessionWords] = useState<Word[]>([]);
+export default function FlashcardSession({ mode }: FlashcardSessionProps) {
+  const [words, setWords] = useState<Word[]>([]);
+  const [cardDirections, setCardDirections] = useState<boolean[]>([]); // True: Türkçe Ön, False: Almanca Ön
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
-  const [progress, setProgress] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const supabase = createClient();
+  const router = useRouter();
 
-  // Component yüklendiğinde 'mode'a göre kelimeleri filtrele
+  // Verileri Veritabanından Çek
   useEffect(() => {
-    // 1. LocalStorage'dan mevcut durumu al
-    const seenIds = new Set(getStorageData("seenWordIds"));
-    const learnedIds = new Set(getStorageData("learnedWordIds"));
-
-    let filteredWords: Word[] = [];
-
-    if (mode === "new") {
-      // Mod 'new': Henüz HİÇ GÖRÜLMEMİŞ kelimeleri bul
-      filteredWords = allWords.filter(word => !seenIds.has(word.id));
-    } else if (mode === "practice") {
-      // Mod 'practice': GÖRÜLMÜŞ ama ÖĞRENİLMEMİŞ kelimeleri bul
-      filteredWords = allWords.filter(word => seenIds.has(word.id) && !learnedIds.has(word.id));
-    } else if (mode === "review") {
-      // Mod 'review': ÖĞRENİLMİŞ kelimeleri bul (genel tekrar)
-      filteredWords = allWords.filter(word => learnedIds.has(word.id));
-    }
-
-    // 2. Bulunan kelimeleri karıştır ve ilk 15'ini al
-    const sessionBatch = shuffleArray(filteredWords).slice(0, 15);
-    setSessionWords(sessionBatch);
-
-    // 3. Başlangıç state'lerini ayarla
-    setCurrentIndex(0);
-    setIsFlipped(false);
-    setProgress(0);
-
-  }, [mode, allWords]); // 'mode' veya 'allWords' değiştiğinde yeniden çalış
-
-  // İlerleme çubuğunu güncelle
-  useEffect(() => {
-    if (sessionWords.length > 0) {
-      setProgress(((currentIndex + 1) / sessionWords.length) * 100);
-    }
-  }, [currentIndex, sessionWords]);
-
-  // Kartı çevir
-  const handleFlip = () => {
-    setIsFlipped(!isFlipped);
-  };
-
-  // Sonraki kelimeye geç (Biliyorum / Tekrar Göster)
-  const handleNextWord = (knewIt: boolean) => {
-    const currentWord = sessionWords[currentIndex];
-
-    // 1. LocalStorage'ı güncelle
-    const seenIds = getStorageData("seenWordIds");
-    const learnedIds = getStorageData("learnedWordIds");
-
-    // Her durumda 'görüldü' olarak ekle
-    if (!seenIds.includes(currentWord.id)) {
-      seenIds.push(currentWord.id);
-      localStorage.setItem("seenWordIds", JSON.stringify(seenIds));
-    }
-
-    if (knewIt) {
-      // 'Biliyorum' dediyse 'öğrenildi'ye ekle
-      if (!learnedIds.includes(currentWord.id)) {
-        learnedIds.push(currentWord.id);
-        localStorage.setItem("learnedWordIds", JSON.stringify(learnedIds));
+    const fetchWords = async () => {
+      // 1. Kullanıcıyı al
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        router.push("/auth/login");
+        return;
       }
-    } else {
-      // 'Tekrar Göster' dediyse 'öğrenildi'den çıkar (eğer oradaysa)
-      const index = learnedIds.indexOf(currentWord.id);
-      if (index > -1) {
-        learnedIds.splice(index, 1);
-        localStorage.setItem("learnedWordIds", JSON.stringify(learnedIds));
+
+      // 2. Kullanıcının ilerlemesini çek
+      const { data: progress } = await supabase
+        .from("user_progress")
+        .select("word_id, is_learned")
+        .eq("user_id", user.id);
+
+      const learnedIds = progress?.filter(p => p.is_learned).map(p => p.word_id) || [];
+      const seenIds = progress?.map(p => p.word_id) || [];
+
+      // 3. Kelimeleri çek
+      const { data: allWords, error } = await supabase.from("words").select("*");
+
+      if (error) {
+        console.error("Veri hatası:", error);
+        setLoading(false);
+        return;
       }
+
+      // 4. Mod'a göre filtrele
+      let filteredWords: Word[] = [];
+
+      if (mode === "new") {
+        // Hiç görülmemişler (seenIds içinde OLMAYANLAR)
+        filteredWords = allWords.filter((w: any) => !seenIds.includes(w.id));
+      } else if (mode === "practice") {
+        // Görülenler ama Öğrenilmeyenler (seenIds içinde VAR ama learnedIds içinde YOK)
+        filteredWords = allWords.filter((w: any) => seenIds.includes(w.id) && !learnedIds.includes(w.id));
+      } else if (mode === "review") {
+        // Öğrenilenler (learnedIds içinde VAR)
+        filteredWords = allWords.filter((w: any) => learnedIds.includes(w.id));
+      }
+
+      // 5. Karıştır ve 15 tanesini al
+      const shuffled = filteredWords.sort(() => 0.5 - Math.random()).slice(0, 15);
+      setWords(shuffled);
+
+      // 6. Kart Yönlerini Belirle
+      const directions = shuffled.map(() => {
+        if (mode === "new") return false;
+        return Math.random() > 0.5; // %50 şans ile ters (Türkçe önde)
+      });
+      setCardDirections(directions);
+
+      setLoading(false);
+    };
+
+    fetchWords();
+  }, [mode]);
+
+  // İlerlemeyi Kaydet
+  const handleNextWord = async (knewIt: boolean) => {
+    const currentWord = words[currentIndex];
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (user) {
+      await supabase.from("user_progress").upsert({
+        user_id: user.id,
+        word_id: currentWord.id,
+        is_learned: knewIt,
+        last_reviewed: new Date().toISOString()
+      });
     }
 
-    // 2. Sonraki kelimeye geç
-    if (currentIndex < sessionWords.length - 1) {
+    if (currentIndex < words.length - 1) {
       setCurrentIndex(currentIndex + 1);
-      setIsFlipped(false); // Yeni kelimede kartı başa döndür
+      setIsFlipped(false);
     } else {
-      // Oturum bitti!
-      alert("Oturum bitti! Ana sayfaya yönlendiriliyorsunuz.");
-      window.location.href = '/'; // Ana sayfaya yolla
+      router.push("/"); 
+      router.refresh(); 
     }
   };
-  
-  // *** playSound fonksiyonu ResponsiveVoice kullanacak şekilde güncellendi ***
+
+  // Seslendirme
   const playSound = (text: string) => {
-    // 1. Cümle boşsa hiçbir şey yapma
     if (!text) return;
-
-    // 2. ResponsiveVoice kütüphanesi yüklendi mi diye kontrol et
-    if (typeof window !== 'undefined' && window.responsiveVoice) {
-      // 3. Yüklendiyse, "Deutsch Male" sesiyle metni oku
-      // ( layout.tsx'e script'i eklediğini varsayıyorum )
-      window.responsiveVoice.speak(text, "Deutsch Female");
-    } else {
-      // 4. (Fallback) Kütüphane yüklenmezse, eski robotik sesi kullan
-      console.warn("ResponsiveVoice not loaded, using default TTS.");
-      if (typeof window !== 'undefined' && window.speechSynthesis) {
-          const utterance = new SpeechSynthesisUtterance(text);
-          utterance.lang = 'de-DE';
-          window.speechSynthesis.speak(utterance);
-      }
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'de-DE';
+      const voices = window.speechSynthesis.getVoices();
+      const bestVoice = voices.find(v => v.lang === 'de-DE' && (v.name.includes('Google') || v.name.includes('German')));
+      if (bestVoice) utterance.voice = bestVoice;
+      window.speechSynthesis.speak(utterance);
     }
   };
 
-  // Gösterilecek kelime yoksa (yükleniyor veya o modda kelime kalmadıysa)
-  if (sessionWords.length === 0) {
-    return (
-      <div className="flex min-h-screen w-full items-center justify-center bg-gray-50 p-4">
-        <Card className="w-full max-w-md shadow-lg p-8 text-center">
-          <h2 className="text-2xl font-bold text-blue-900 mb-4">Harika!</h2>
-          <p className="text-gray-700">
-            Bu modda çalışacak kelime kalmamış görünüyor.
-          </p>
-          <Button 
-            className="mt-6 w-full" 
-            onClick={() => window.location.href = '/'}
-          >
-            Ana Sayfaya Dön
-          </Button>
-        </Card>
-      </div>
-    );
-  }
+  // Mevcut kelime verilerini hazırla (Loading sırasında hata vermemesi için güvenli erişim)
+  const currentWord = words[currentIndex];
+  const isReversed = cardDirections[currentIndex];
+  const articleColorClass = currentWord ? getArticleColorClass(currentWord.artikel_code) : "bg-white";
 
-  // O anki kelime verisi ve rengi
-  const currentWord = sessionWords[currentIndex];
-  // Renk kodunu al
-  const articleColorClass = getArticleColorClass(currentWord.artikel_code);
+  // İçerik Belirleme (Data yoksa boş string)
+  const frontText = currentWord ? (isReversed ? currentWord.turkish : currentWord.german) : "";
+  const frontSentence = currentWord ? (isReversed ? currentWord.turkish_sentence : currentWord.german_sentence) : "";
+  
+  const backText = currentWord ? (isReversed ? currentWord.german : currentWord.turkish) : "";
+  const backSentence = currentWord ? (isReversed ? currentWord.german_sentence : currentWord.turkish_sentence) : "";
+
+  const showAudioOnFront = !isReversed;
+  const showAudioOnBack = isReversed;
+
+  const currentCardColor = (!isFlipped && !isReversed) || (isFlipped && isReversed) 
+    ? articleColorClass 
+    : "bg-white";
 
   return (
-    <div className="flex flex-col min-h-screen w-full bg-gray-50 p-4 sm:p-8">
-      {/* 1. Header (Başlık ve İlerleme Çubuğu) */}
+    // pb-24 (96px) + footer mb-8 = Mobilde navigasyonun altında kalmayı engeller
+    <div className="flex flex-col min-h-screen w-full bg-gray-50 p-4 sm:p-8 pb-16">
+      
+      {/* Header */}
       <header className="w-full max-w-3xl mx-auto mb-6">
         <div className="flex justify-between items-center mb-4">
           <div className="flex items-center gap-3">
             <Leaf className="text-green-500" size={32} />
             <span className="text-xl font-bold text-gray-700">Deutsch</span>
           </div>
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon">
-              <Settings className="text-gray-400" />
-            </Button>
-            <div className="w-8 h-8 bg-gray-300 rounded-full"></div>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="icon"><Settings className="text-gray-400" /></Button>
           </div>
         </div>
-        <span className="text-sm font-semibold text-gray-500">
-          Session Progress
-        </span>
-        <Progress value={progress} className="w-full h-3 mt-2" />
+        {/* Loading sırasında progress 0 olsun veya dolu görünsün tercihe bağlı, şimdilik hesaplıyoruz */}
+        <Progress value={words.length > 0 ? ((currentIndex) / words.length) * 100 : 0} className="w-full h-3 mt-2" />
       </header>
 
-      {/* 2. Flashcard Alanı */}
-      <main className="grow flex flex-col items-center justify-center">
-        {/* Kartın arkaplan rengi 'articleColorClass' ile ayarlandı */}
-        <Card className={cn(
-          "w-full max-w-3xl h-[400px] shadow-lg rounded-2xl flex flex-col justify-center items-center p-6 text-center transition-colors duration-300",
-          articleColorClass // Renk sınıfı burada eklendi
-        )}>
-          {!isFlipped ? (
-            // ÖN YÜZ (Almanca) - Alan adları güncellendi
-            <CardContent className="flex flex-col items-center justify-center gap-6">
-              <div className="flex items-center gap-3">
-                <h2 className="text-5xl font-bold text-gray-800">
-                  {currentWord.word}
-                </h2>
-                {/* Buton artık güncel playSound'u çağırıyor */}
-                <Button variant="ghost" size="icon" onClick={() => playSound(currentWord.word)}>
-                  <Volume2 className="text-gray-500" />
-                </Button>
-              </div>
-              {/* Sadece cümle varsa (boş string değilse) göster */}
-              {currentWord.example_de && ( 
+      {/* Ana Alan (Kart veya Loading) */}
+      <main className="grow flex flex-col items-center justify-center w-full">
+        
+        {/* 1. Durum: Yükleniyor */}
+        {loading ? (
+           <div className="flex flex-col items-center justify-center gap-4 animate-pulse">
+              <Loader2 className="animate-spin text-blue-600" size={56} />
+             
+           </div>
+        ) : 
+        
+        /* 2. Durum: Kelime Yok */
+        words.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-4 p-4 text-center">
+              <h2 className="text-2xl font-bold text-gray-700">Harika!</h2>
+              <p className="text-gray-500">Bu modda çalışacak yeni kelime kalmadı.</p>
+              <Button onClick={() => router.push("/")} className="mt-4">Ana Sayfaya Dön</Button>
+            </div>
+        ) : 
+        
+        /* 3. Durum: Kart Gösterimi */
+        (
+          <Card className={cn(
+            "w-full max-w-3xl h-[400px] shadow-lg rounded-2xl flex flex-col justify-center items-center p-6 text-center transition-colors duration-300",
+            currentCardColor
+          )}>
+            {!isFlipped ? (
+              <CardContent className="flex flex-col items-center justify-center gap-6">
                 <div className="flex items-center gap-3">
-                  <p className="text-xl text-gray-600">
-                    {currentWord.example_de}
-                  </p>
-                  <Button variant="ghost" size="icon" onClick={() => playSound(currentWord.example_de)}>
-                    <Volume2 className="text-gray-500" />
-                  </Button>
+                  <h2 className="text-4xl sm:text-5xl font-bold text-gray-800">{frontText}</h2>
+                  {showAudioOnFront && (
+                    <Button variant="ghost" size="icon" onClick={() => playSound(frontText)}>
+                      <Volume2 className="text-gray-500" />
+                    </Button>
+                  )}
                 </div>
-              )}
-              
-              <Button
-                variant="outline"
-                className="mt-8"
-                onClick={handleFlip}
-              >
-                <RefreshCw className="mr-2 h-4 w-4" /> Çevir
-              </Button>
-            </CardContent>
-          ) : (
-            // ARKA YÜZ (Türkçe)
-            <CardContent className="flex flex-col items-center justify-center gap-6 animate-in fade-in">
-              <h2 className="text-5xl font-bold text-gray-800">
-                {currentWord.translation_tr}
-              </h2>
-              {/* Sadece cümle varsa (boş string değilse) göster */}
-              {currentWord.example_tr && ( 
-                <p className="text-xl text-gray-600">
-                  {currentWord.example_tr}
-                </p>
-              )}
-              {/* Arka yüze de çevir butonu eklendi */}
-              <Button
-                variant="outline"
-                className="mt-8"
-                onClick={handleFlip}
-              >
-                <RefreshCw className="mr-2 h-4 w-4" /> Çevir
-              </Button>
-            </CardContent>
-          )}
-        </Card>
+                {frontSentence && (
+                  <div className="flex items-center gap-3">
+                    <p className="text-lg sm:text-xl text-gray-600">{frontSentence}</p>
+                    {showAudioOnFront && (
+                      <Button variant="ghost" size="icon" onClick={() => playSound(frontSentence)}>
+                        <Volume2 className="text-gray-500" />
+                      </Button>
+                    )}
+                  </div>
+                )}
+                <Button variant="outline" className="mt-8" onClick={() => setIsFlipped(true)}>
+                  <RefreshCw className="mr-2 h-4 w-4" /> Çevir
+                </Button>
+              </CardContent>
+            ) : (
+              <CardContent className="flex flex-col items-center justify-center gap-6 animate-in fade-in">
+                <div className="flex items-center gap-3">
+                  <h2 className="text-4xl sm:text-5xl font-bold text-gray-800">{backText}</h2>
+                  {showAudioOnBack && (
+                    <Button variant="ghost" size="icon" onClick={() => playSound(backText)}>
+                      <Volume2 className="text-gray-500" />
+                    </Button>
+                  )}
+                </div>
+                {backSentence && <p className="text-lg sm:text-xl text-gray-600">{backSentence}</p>}
+                <Button variant="outline" className="mt-8" onClick={() => setIsFlipped(false)}>
+                  <RefreshCw className="mr-2 h-4 w-4" /> Çevir
+                </Button>
+              </CardContent>
+            )}
+          </Card>
+        )}
       </main>
 
-      {/* 3. Footer (Aksiyon Butonları) */}
-      <footer className="w-full max-w-3xl mx-auto mt-6">
-        <div className="grid grid-cols-2 gap-4">
-          <Button
-            size="lg"
-            className="bg-red-500 hover:bg-red-600 text-white font-bold text-lg py-8"
-            onClick={() => handleNextWord(false)} // 'false' -> Bilemedim
-          >
-            Tekrar Göster
-          </Button>
-          <Button
-            size="lg"
-            className="bg-green-500 hover:bg-green-600 text-white font-bold text-lg py-8"
-            onClick={() => handleNextWord(true)} // 'true' -> Bildim
-          >
-            Biliyorum
-          </Button>
-        </div>
-      </footer>
+      {/* Alt Butonlar - Sadece Kart Varken Göster */}
+      {!loading && words.length > 0 && (
+        <footer className="w-full max-w-3xl mx-auto mt-6 "> {/* mb-8 ile yukarı kaldırdık */}
+          <div className="grid grid-cols-2 gap-4">
+            <Button size="lg" className="bg-red-500 hover:bg-red-600 text-white font-bold py-8" onClick={() => handleNextWord(false)}>
+              Tekrar Göster
+            </Button>
+            <Button size="lg" className="bg-green-500 hover:bg-green-600 text-white font-bold py-8" onClick={() => handleNextWord(true)}>
+              Biliyorum
+            </Button>
+          </div>
+        </footer>
+      )}
     </div>
   );
 }
