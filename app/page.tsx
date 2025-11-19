@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { redirect } from "next/navigation";
+import PracticeHub from "@/components/PracticeHub";
 
 // Server Component (Doğrudan veritabanına bağlanır)
 export default async function HomePage() {
@@ -64,7 +65,12 @@ export default async function HomePage() {
             <Button asChild size="lg" variant="outline" className="border-blue-900 text-blue-900 py-6">
               <Link href="/review">Öğrendiklerim (Genel Tekrar)</Link>
             </Button>
+            <Button asChild size="lg" variant="outline" className="border-blue-900 text-blue-900 py-6">
+              <Link href="/dictionary">Öğrenilmiş Kelimeleri Gör (Sözlük)</Link>
+            </Button>
+
           </div>
+
 
         
 

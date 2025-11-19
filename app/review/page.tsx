@@ -1,9 +1,10 @@
-import FlashcardSession from "@/components/FlashcardSession";
+
+import PracticeHub from "@/components/PracticeHub";
 
 export default function TekrarPage() {
 
   return (
    
-    <FlashcardSession mode="review"  />
+    <PracticeHub mode={"review"}/>
   );
 }
